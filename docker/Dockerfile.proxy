@@ -1,0 +1,28 @@
+FROM golang:1.27 AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY src/ ./src/
+
+WORKDIR /app/src
+RUN CGO_ENABLED=0 GOOS=linux go build -o ../proxy_service \
+    -ldflags="-s -w" \
+    proxy_service.go config.go utils.go
+
+FROM alpine:latest
+
+WORKDIR /app
+
+RUN apk --no-cache add ca-certificates curl
+
+COPY --from=builder /app/proxy_service .
+
+EXPOSE 8082
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8082/health || exit 1
+
+CMD ["./proxy_service"]

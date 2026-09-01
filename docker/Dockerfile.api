@@ -1,0 +1,37 @@
+# Multi-stage build for minimal image
+FROM golang:1.27 AS builder
+
+WORKDIR /app
+
+# Go modules
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Source code from src/
+COPY src/ ./src/
+
+# Build from src/
+WORKDIR /app/src
+RUN CGO_ENABLED=0 GOOS=linux go build -o ../api_service \
+    -ldflags="-s -w" \
+    api_service.go config.go notifier.go utils.go
+
+FROM alpine:latest
+
+WORKDIR /app
+
+# Install required packages
+RUN apk --no-cache add ca-certificates curl
+
+# Copy from builder
+COPY --from=builder /app/api_service .
+
+# Copy config
+COPY config/.env* ./
+
+EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+CMD ["./api_service"]

@@ -1,0 +1,26 @@
+FROM golang:1.27 AS builder
+
+WORKDIR /app
+
+COPY go.mod go.sum ./
+RUN go mod download
+
+COPY src/ ./src/
+
+WORKDIR /app/src
+RUN CGO_ENABLED=0 GOOS=linux go build -o ../worker_service \
+    -ldflags="-s -w" \
+    worker_service.go config.go utils.go proxy.go
+
+FROM alpine:latest
+
+WORKDIR /app
+
+RUN apk --no-cache add ca-certificates
+
+COPY --from=builder /app/worker_service .
+COPY config/.env* ./
+
+ENV CHECK_INTERVAL=45
+
+CMD ["./worker_service"]
